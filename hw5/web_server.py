@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+from socket import *
+import os
+
+def get_mime_type(filename):
+    """
+    파일 확장자에 따라 적절한 MIME type을 반환합니다.
+    """
+    if filename.endswith('.html'):
+        return 'text/html'
+    elif filename.endswith('.png'):
+        return 'image/png'
+    elif filename.endswith('.ico'):
+        return 'image/x-icon'
+    else:
+        return 'application/octet-stream'
+
+def main():
+    host = ''          # 모든 인터페이스에서 요청을 받음
+    port = 80          # HTTP 기본 포트 (테스트 시 포트를 8080 등으로 변경 가능)
+    server_socket = socket(AF_INET, SOCK_STREAM)
+    server_socket.bind((host, port))
+    server_socket.listen(10)
+    print("웹 서버 실행 중... 포트:", port)
+    
+    try:
+        while True:
+            # [1] 클라이언트 연결 대기 및 수락
+            client_socket, client_addr = server_socket.accept()
+            print("클라이언트 접속:", client_addr)
+            
+            # [2] 클라이언트로부터 최대 1024바이트의 데이터 수신
+            data = client_socket.recv(1024)
+            if not data:
+                client_socket.close()
+                continue
+
+            # [3] 수신한 데이터를 문자열로 디코딩 (UTF-8)
+            try:
+                request_msg = data.decode('utf-8', errors='ignore')
+            except Exception as e:
+                print("디코드 오류:", e)
+                client_socket.close()
+                continue
+
+            # [4] HTTP 요청의 첫 번째 줄을 파싱 (예: "GET /index.html HTTP/1.1")
+            request_line = request_msg.split('\r\n')[0]
+            print("요청 라인:", request_line)
+            parts = request_line.split()
+            if len(parts) < 2:
+                client_socket.close()
+                continue
+            
+            method, path = parts[0], parts[1]
+            if method != "GET":
+                # GET 방식만 지원
+                client_socket.close()
+                continue
+            
+            # [5] 요청 URL에서 파일 이름 추출 (앞의 '/' 제거)
+            resource = path.split('?')[0]  # 쿼리 스트링이 있을 경우 제거
+            if resource.startswith('/'):
+                filename = resource[1:]
+            else:
+                filename = resource
+
+            print("요청된 파일:", filename)
+            
+            # [6] 지원 가능한 자원(index.html, iot.png, favicon.ico)인지 확인
+            if filename not in ["index.html", "iot.png", "favicon.ico"]:
+                not_found_response = (
+                    "HTTP/1.1 404 Not Found\r\n"
+                    "\r\n"
+                    "<HTML><HEAD><TITLE>Not Found</TITLE></HEAD>"
+                    "<BODY>Not Found</BODY></HTML>"
+                )
+                client_socket.send(not_found_response.encode())
+                client_socket.close()
+                continue
+
+            # [7] 요청된 파일이 실제 디스크에 존재하는지 확인
+            if os.path.exists(filename):
+                mimeType = get_mime_type(filename)
+                header = "HTTP/1.1 200 OK\r\n"
+                header += "Content-Type: " + mimeType + "\r\n"
+                header += "\r\n"
+                # [8] HTTP 응답 헤더 전송
+                client_socket.send(header.encode())
+                
+                # [9] 파일 내용 전송
+                if filename == 'index.html':
+                    # 텍스트 파일인 경우 (한글 처리를 위해 인코딩 조정)
+                    with open(filename, 'r', encoding='utf-8') as f:
+                        file_data = f.read()
+                    client_socket.send(file_data.encode('euc-kr'))
+                else:
+                    # 바이너리 파일(iot.png, favicon.ico)의 경우
+                    with open(filename, 'rb') as f:
+                        file_data = f.read()
+                    client_socket.send(file_data)
+            else:
+                # [10] 요청한 파일이 없을 때 404 응답 전송
+                not_found_response = (
+                    "HTTP/1.1 404 Not Found\r\n"
+                    "\r\n"
+                    "<HTML><HEAD><TITLE>Not Found</TITLE></HEAD>"
+                    "<BODY>Not Found</BODY></HTML>"
+                )
+                client_socket.send(not_found_response.encode())
+            
+            # [11] 클라이언트 소켓 종료
+            client_socket.close()
+    except KeyboardInterrupt:
+        print("\n서버 종료")
+    finally:
+        server_socket.close()
+
+if __name__ == '__main__':
+    main()
+
+    import os
+print("현재 작업 디렉토리:", os.getcwd())
+
+
